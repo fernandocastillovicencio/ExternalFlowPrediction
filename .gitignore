@@ -1,0 +1,72 @@
+# ===========================
+# 🔧 OpenFOAM - arquivos gerados
+# ===========================
+**/postProcessing/
+**/VTK/
+**/processor*/        # Casos paralelos
+**/[0-9]*             # Diretórios de tempo (ex: 0.1, 1000)
+**/log.*
+**/core
+**/simpleFoam.*
+**/foamTo*
+**/mesh*Dicts/
+**/cases/*
+**/system/*
+**/constant/*
+**/0/*
+
+# ===========================
+# 🔄 Casos gerados automaticamente
+# ===========================
+simulations/cases/Re_*/
+simulations/scripts/casos.txt
+
+# ===========================
+# 📦 Arquivos pesados ou derivados
+# ===========================
+**/*.stl
+**/*.obj
+**/*.eMesh
+**/*.foam
+**/*.vtk
+**/*.vtu
+**/*.csv
+**/*.npy
+**/*.npz
+**/*.hdf5
+**/*.h5
+
+# ===========================
+# 🤖 Machine Learning
+# ===========================
+data/
+models/checkpoints/
+models/*.pt
+models/*.pth
+models/*.h5
+models/*.ckpt
+models/__pycache__/
+models/*.log
+
+# ===========================
+# 🧪 Jupyter & Python
+# ===========================
+*.ipynb_checkpoints
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# ===========================
+# ⚙️ IDE e editor
+# ===========================
+.vscode/
+.idea/
+*.code-workspace
+
+# ===========================
+# 💻 Sistema
+# ===========================
+.DS_Store
+Thumbs.db
+*.swp
+*~
