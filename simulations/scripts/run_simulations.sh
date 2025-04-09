@@ -16,12 +16,22 @@ declare -A velocities=(
   [5.00]=7.50E-05
 )
 
-# Etapa 1: criar diretórios e atualizar campo U
+# Etapa 1: criar diretórios e atualizar campo U e magUInf
 for Re in "${!velocities[@]}"; do
   dir="../cases/Re_$Re"
   echo "Criando caso $dir com U = ${velocities[$Re]}"
-  cp -r ../template "$dir"
-  sed -i "s|uniform (.* 0 0);|uniform (${velocities[$Re]} 0 0);|" "$dir/0/U"
+  
+  # Copia o template do caso
+  cp -r ../template/case "$dir"
+  
+  # Atualiza o campo de velocidade (0/U)
+  sed -i "s|uniform (__UINF__ 0 0);|uniform (${velocities[$Re]} 0 0);|" "$dir/0/U"
+
+  # Atualiza o valor de magUInf no controlDict
+  sed -i "s|magUInf *__UINF__;|magUInf         ${velocities[$Re]};|" "$dir/system/controlDict"
+
+  # Substitui o valor de velocidade na expressão do Cp
+  sed -i "s|(__UINF__ 0 0)|(${velocities[$Re]} 0 0)|" "$dir/system/controlDict"
 done
 
 # Etapa 2: gerar lista de casos
