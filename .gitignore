@@ -36,6 +36,12 @@ simulations/scripts/casos.txt
 **/*.hdf5
 **/*.h5
 
+**/*.png
+**/*.pt
+**/*.md
+**/data
+
+
 # ===========================
 # 🤖 Machine Learning
 # ===========================
