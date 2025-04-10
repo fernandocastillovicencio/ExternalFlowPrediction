@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from model import ReFlowNet
+from model import ReFlowUNet
 from flow_dataset import FlowDataset
 
 # Configurações
@@ -18,7 +18,7 @@ train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader   = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 
 # Modelo e otimizador
-model = ReFlowNet().to(DEVICE)
+model = ReFlowUNet().to(DEVICE)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
