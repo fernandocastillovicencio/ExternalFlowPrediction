@@ -1,7 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 import os
-from model import ReFlowNet
+from model import ReFlowUNet
 from flow_dataset import FlowDataset
 import numpy as np
 
@@ -11,7 +11,7 @@ os.makedirs("comparacoes_com_erro", exist_ok=True)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Carrega o modelo
-model = ReFlowNet().to(DEVICE)
+model = ReFlowUNet().to(DEVICE)
 model.load_state_dict(torch.load("neural_network/best_model.pt", map_location=DEVICE))
 model.eval()
 
