@@ -134,26 +134,32 @@ print("✅ CSV exportado para '../data/dataY-dimensionless.csv'")
 # -------------------------------------------------------- #
 
 normalized_dataset = np.empty_like(dimless_dataset)
+norm_stats = {}
 
-# Normalização Z-score, ignorando NaNs
+# Normalização Z-score por canal
 for i, var in enumerate(["Ux", "Uy", "p"]):
     channel = dimless_dataset[:, :, :, i]
 
-    # Ignora NaNs nos cálculos
     mean = np.nanmean(channel)
-    std = np.nanstd(channel)
+    std  = np.nanstd(channel)
 
-    # Normalização Z-score preservando NaNs
-    normalized_dataset[:, :, :, i] = (channel - mean) / std
+    # Aplica Z-score e preserva NaNs
+    normalized = (channel - mean) / std
+    normalized_dataset[:, :, :, i] = normalized
 
+    norm_stats[var] = {"mean": float(mean), "std": float(std)}
     print(f"✅ {var} normalizado: média = {mean:.3e}, desvio = {std:.3e}")
 
-# Salvar NPY e CSV
+# Salva o dataset normalizado
 np.save("../data/dataY-normalized.npy", normalized_dataset)
 
-# Salvar CSV ignorando NaNs (convertidos em string vazia no CSV)
-flat = normalized_dataset.reshape(-1, 3)
-df_normalized = pd.DataFrame(flat, columns=["Ux_n", "Uy_n", "p_n"])
-df_normalized.to_csv("../data/dataY-normalized.csv", index=False)
+# CSV para visualização
+df = pd.DataFrame(normalized_dataset.reshape(-1, 3), columns=["Ux_n", "Uy_n", "p_n"])
+df.to_csv("../data/dataY-normalized.csv", index=False)
+
+# Salva as estatísticas de normalização para uso posterior (ex: desnormalização)
+with open("../data/dataY-norm-params.json", "w") as f:
+    json.dump(norm_stats, f, indent=4)
 
 print("✅ Dataset normalizado (Z-score) salvo em '../data/dataY-normalized.npy'")
+print("✅ Estatísticas salvas em '../data/dataY-norm-params.json'")

@@ -29,7 +29,7 @@ MODEL_PATH = "neural_network/best_model.pt"
 # Pesos para cada variável
 W_UX = 1.0
 W_UY = 1.0
-W_P = 3.0
+W_P = 5.0
 
 # Datasets e Loaders
 train_set = FlowDataset(subset='train')
@@ -39,7 +39,7 @@ train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 
 # Modelo
-model = ReFlowNet(in_channels=3, out_channels=3).to(DEVICE)
+model = ReFlowNet(in_channels=5).to(DEVICE)
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=LR)
 
@@ -53,23 +53,26 @@ for epoch in range(1, EPOCHS + 1):
     model.train()
     train_loss = 0.0
 
-    for xb, yb, mb,_ in train_loader:
+    for xb, yb, mb, _ in train_loader:
         xb, yb, mb = xb.to(DEVICE), yb.to(DEVICE), mb.to(DEVICE)
         optimizer.zero_grad()
         preds = model(xb)
         if mb.sum() == 0:
             continue
+
         loss = (
             W_UX * criterion(preds[..., 0][mb[..., 0]], yb[..., 0][mb[..., 0]]) +
             W_UY * criterion(preds[..., 1][mb[..., 1]], yb[..., 1][mb[..., 1]]) +
             W_P  * criterion(preds[..., 2][mb[..., 2]], yb[..., 2][mb[..., 2]])
         )
+
         loss.backward()
         optimizer.step()
         train_loss += loss.item() * xb.size(0)
 
     train_loss /= len(train_loader.dataset)
 
+    # Validação
     model.eval()
     val_loss = 0.0
     with torch.no_grad():
@@ -78,11 +81,13 @@ for epoch in range(1, EPOCHS + 1):
             preds = model(xb)
             if mb.sum() == 0:
                 continue
+
             loss = (
                 W_UX * criterion(preds[..., 0][mb[..., 0]], yb[..., 0][mb[..., 0]]) +
                 W_UY * criterion(preds[..., 1][mb[..., 1]], yb[..., 1][mb[..., 1]]) +
                 W_P  * criterion(preds[..., 2][mb[..., 2]], yb[..., 2][mb[..., 2]])
             )
+
             val_loss += loss.item() * xb.size(0)
 
     val_loss /= len(val_loader.dataset)

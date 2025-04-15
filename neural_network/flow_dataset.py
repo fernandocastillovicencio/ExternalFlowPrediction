@@ -14,8 +14,8 @@ class FlowDataset(Dataset):
                  path_y='data/dataY-normalized.npy',
                  path_mask='data/mask.npy'):
 
-        x = np.load(path_x)                    # x.shape = (N, 3, 100, 100)
-        y = np.load(path_y)                    # y.shape = (N, 100, 100, 3)
+        x = np.load(path_x)  # shape [N, 5, H, W]
+        y = np.load(path_y)  # shape [N, H, W, 3]
 
         if subset == 'train':
             idx = TRAIN_IDX
@@ -29,14 +29,10 @@ class FlowDataset(Dataset):
         if np.isnan(y).any():
             print("⚠️ y contém NaNs (esperado nas regiões internas do obstáculo).")
 
-        # Entradas já estão no formato [N, C, H, W]
-        self.x = torch.tensor(x[idx], dtype=torch.float32)
-
-        # Versão com e sem NaN
+        self.x = torch.tensor(x[idx], dtype=torch.float32)  # entrada [C_in, H, W]
         self.y_raw = torch.tensor(y[idx], dtype=torch.float32)  # usada para visualização
         self.y = torch.tensor(np.nan_to_num(y[idx], nan=0.0), dtype=torch.float32)  # usada no treino
 
-        # Carregamento da máscara
         if os.path.exists(path_mask):
             mask = np.load(path_mask)
 
