@@ -13,13 +13,13 @@ def plot_prediction_fields(model, val_loader, device, domain_mask, var_names=['U
     os.makedirs(save_dir, exist_ok=True)
     model.eval()
 
-    xb, yb, _ = next(iter(val_loader))
+    xb, yb, _, yb_raw= next(iter(val_loader))
     xb = xb.to(device)
 
     with torch.no_grad():
         pred = model(xb)[0].cpu().numpy()
 
-    true = yb[0].numpy()
+    true = yb_raw[0].numpy()
     mask = domain_mask[0].numpy().astype(bool)  # Shape: (100, 100, 3)
 
     error = np.abs(pred - true)

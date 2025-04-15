@@ -9,17 +9,13 @@ VAL_IDX   = [4, 7]
 TEST_IDX  = [0, 11]
 
 class FlowDataset(Dataset):
-    def get_domain_mask(self):
-        return self.mask
-
-
     def __init__(self, subset='all',
                  path_x='data/dataX.npy',
                  path_y='data/dataY-normalized.npy',
                  path_mask='data/mask.npy'):
 
-        x = np.load(path_x)
-        y = np.load(path_y)
+        x = np.load(path_x)                    # x.shape = (N, 3, 100, 100)
+        y = np.load(path_y)                    # y.shape = (N, 100, 100, 3)
 
         if subset == 'train':
             idx = TRAIN_IDX
@@ -30,46 +26,39 @@ class FlowDataset(Dataset):
         else:
             idx = list(range(len(x)))
 
-        # Verifica se há NaNs
         if np.isnan(y).any():
             print("⚠️ y contém NaNs (esperado nas regiões internas do obstáculo).")
 
-        # Converte para tensor
+        # Entradas já estão no formato [N, C, H, W]
         self.x = torch.tensor(x[idx], dtype=torch.float32)
-        self.y = torch.tensor(np.nan_to_num(y[idx], nan=0.0), dtype=torch.float32)  # evita passar NaN ao modelo
 
-        # Máscara para a perda
+        # Versão com e sem NaN
+        self.y_raw = torch.tensor(y[idx], dtype=torch.float32)  # usada para visualização
+        self.y = torch.tensor(np.nan_to_num(y[idx], nan=0.0), dtype=torch.float32)  # usada no treino
+
+        # Carregamento da máscara
         if os.path.exists(path_mask):
-            mask2d = np.load(path_mask)  # (100, 100)
-            assert mask2d.shape == y.shape[1:3], f"Máscara 2D com shape incompatível: {mask2d.shape} != {y.shape[1:3]}"
+            mask = np.load(path_mask)
 
-            # Expande para shape (100, 100, 3)
-            mask3d = np.repeat(mask2d[:, :, np.newaxis], 3, axis=2)
+            if mask.ndim == 2:
+                mask = np.repeat(mask[:, :, np.newaxis], 3, axis=2)  # [H, W, 3]
+                mask = np.repeat(mask[np.newaxis, ...], y.shape[0], axis=0)  # [N, H, W, 3]
 
-            # Replica para todas as amostras
-            mask_full = np.repeat(mask3d[np.newaxis, :, :, :], y.shape[0], axis=0)  # (N, 100, 100, 3)
+            if mask.shape != y.shape:
+                raise ValueError(f"Máscara com shape incompatível: {mask.shape} != {y.shape}")
 
-            self.mask = torch.tensor(mask_full[idx], dtype=torch.bool)
-
+            self.mask = torch.tensor(mask[idx], dtype=torch.bool)
         else:
             self.mask = torch.ones_like(self.y, dtype=torch.bool)
 
-
-
+        self.height = self.y.shape[1]
+        self.width  = self.y.shape[2]
 
     def __len__(self):
         return len(self.x)
 
     def __getitem__(self, idx):
-        return self.x[idx], self.y[idx], self.mask[idx]
+        return self.x[idx], self.y[idx], self.mask[idx], self.y_raw[idx]
 
-
-
-
-if __name__ == '__main__':
-    dataset = FlowDataset()
-    print(f'Tamanho do dataset: {len(dataset)} amostras')
-    x0, y0, m0 = dataset[0]
-    print(f'\nPrimeira entrada (Re): {x0}')
-    print(f'Saída correspondente - shape: {y0.shape}')
-    print(f'Máscara correspondente: {m0.shape}')
+    def get_domain_mask(self):
+        return self.mask

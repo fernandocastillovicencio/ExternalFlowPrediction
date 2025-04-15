@@ -14,7 +14,7 @@ test_loader  = DataLoader(test_set, batch_size=1, shuffle=False)
 
 # Teste rápido
 if __name__ == '__main__':
-    for xb, yb, mb in train_loader:
+    for xb, yb, mb, _ in train_loader:
         print(f'[Treino] Batch entrada: {xb.shape} | Batch saída: {yb.shape} | Máscara: {mb.shape}')
         break
 
