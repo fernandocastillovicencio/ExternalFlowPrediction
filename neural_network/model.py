@@ -1,43 +1,40 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class ReFlowNet(nn.Module):
     def __init__(self):
-        super().__init__()
+        super(ReFlowNet, self).__init__()
 
-        # MLP Encoder
-        self.encoder = nn.Sequential(
-            nn.Linear(1, 64),
+        self.fc = nn.Sequential(
+            nn.Linear(1, 128),
             nn.ReLU(),
-            nn.Linear(64, 128),
-            nn.ReLU(),
-            nn.Linear(128, 256),
-            nn.ReLU(),
-            nn.Linear(256, 4096),
+            nn.Linear(128, 100 * 100 * 16),
             nn.ReLU()
         )
 
-        # Decoder CNN
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(16, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
+        self.decoder_velocity = nn.Sequential(
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(32, 2, kernel_size=1)  # Ux, Uy
+        )
+
+        self.decoder_pressure = nn.Sequential(
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Conv2d(16, 3, kernel_size=3, padding=1)  # Última camada → 3 canais
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 1, kernel_size=1)  # p
         )
 
     def forward(self, x):
-        x = self.encoder(x)                     # (B, 1) → (B, 4096)
-        x = x.view(-1, 16, 16, 16)              # (B, 16, 16, 16)
-        x = self.decoder(x)                     # (B, 3, H, W)
-        x = x[:, :, :100, :100]                 # Crop para 100x100
-        x = x.permute(0, 2, 3, 1)               # (B, 100, 100, 3)
-        return x
-    
-if __name__ == '__main__':
-    model = ReFlowNet()
-    x = torch.rand((2, 1))
-    y = model(x)
-    print(f'Saída: {y.shape}')  # Esperado: (2, 100, 100, 3)
+        x = self.fc(x)  # [B, 1] -> [B, 100*100*16]
+        x = x.view(-1, 16, 100, 100)  # reshape para imagem
+
+        vel_out = self.decoder_velocity(x)  # [B, 2, 100, 100]
+        p_out   = self.decoder_pressure(x)  # [B, 1, 100, 100]
+
+        out = torch.cat([vel_out, p_out], dim=1)  # [B, 3, 100, 100]
+        return out.permute(0, 2, 3, 1)  # [B, 100, 100, 3]
