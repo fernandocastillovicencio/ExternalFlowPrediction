@@ -38,6 +38,23 @@ val_set = FlowDataset(subset='val')
 train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 
+
+def compute_dynamic_weights(preds, targets, mask):
+    """
+    Calcula pesos dinâmicos para Ux, Uy e p com base na variância dos erros.
+    """
+    errors = []
+    for i in range(3):
+        error = (preds[..., i] - targets[..., i])[mask[..., i]]
+        mse = torch.mean(error ** 2)
+        errors.append(mse)
+
+    errors = torch.stack(errors)
+    inv = 1.0 / (errors + 1e-8)  # evita divisão por zero
+    weights = inv / torch.sum(inv)
+    return weights  # tensor de shape (3,)
+
+
 # Modelo
 model = ReFlowNet(in_channels=5).to(DEVICE)
 criterion = nn.MSELoss()
