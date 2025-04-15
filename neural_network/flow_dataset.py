@@ -9,11 +9,14 @@ VAL_IDX   = [4, 7]
 TEST_IDX  = [0, 11]
 
 class FlowDataset(Dataset):
-    def __init__(self, subset='all', path_x='data/dataX.npy', path_y='data/dataY-normalized.npy'):
-        if not os.path.exists(path_x):
-            raise FileNotFoundError(f"Arquivo não encontrado: {path_x}")
-        if not os.path.exists(path_y):
-            raise FileNotFoundError(f"Arquivo não encontrado: {path_y}")
+    def get_domain_mask(self):
+        return self.mask
+
+
+    def __init__(self, subset='all',
+                 path_x='data/dataX.npy',
+                 path_y='data/dataY-normalized.npy',
+                 path_mask='data/mask.npy'):
 
         x = np.load(path_x)
         y = np.load(path_y)
@@ -27,21 +30,46 @@ class FlowDataset(Dataset):
         else:
             idx = list(range(len(x)))
 
+        # Verifica se há NaNs
+        if np.isnan(y).any():
+            print("⚠️ y contém NaNs (esperado nas regiões internas do obstáculo).")
+
+        # Converte para tensor
         self.x = torch.tensor(x[idx], dtype=torch.float32)
-        self.y = torch.tensor(y[idx], dtype=torch.float32)
+        self.y = torch.tensor(np.nan_to_num(y[idx], nan=0.0), dtype=torch.float32)  # evita passar NaN ao modelo
+
+        # Máscara para a perda
+        if os.path.exists(path_mask):
+            mask2d = np.load(path_mask)  # (100, 100)
+            assert mask2d.shape == y.shape[1:3], f"Máscara 2D com shape incompatível: {mask2d.shape} != {y.shape[1:3]}"
+
+            # Expande para shape (100, 100, 3)
+            mask3d = np.repeat(mask2d[:, :, np.newaxis], 3, axis=2)
+
+            # Replica para todas as amostras
+            mask_full = np.repeat(mask3d[np.newaxis, :, :, :], y.shape[0], axis=0)  # (N, 100, 100, 3)
+
+            self.mask = torch.tensor(mask_full[idx], dtype=torch.bool)
+
+        else:
+            self.mask = torch.ones_like(self.y, dtype=torch.bool)
+
+
+
 
     def __len__(self):
         return len(self.x)
 
     def __getitem__(self, idx):
-        return self.x[idx], self.y[idx]
+        return self.x[idx], self.y[idx], self.mask[idx]
+
 
 
 
 if __name__ == '__main__':
     dataset = FlowDataset()
     print(f'Tamanho do dataset: {len(dataset)} amostras')
-    x0, y0 = dataset[0]
+    x0, y0, m0 = dataset[0]
     print(f'\nPrimeira entrada (Re): {x0}')
     print(f'Saída correspondente - shape: {y0.shape}')
-    print(f'Variáveis mín e máx: {y0.min():.4f} → {y0.max():.4f}')
+    print(f'Máscara correspondente: {m0.shape}')

@@ -14,19 +14,14 @@ test_loader  = DataLoader(test_set, batch_size=1, shuffle=False)
 
 # Teste rápido
 if __name__ == '__main__':
-    for xb, yb in train_loader:
-        print(f'[Treino] Batch entrada: {xb.shape} | Batch saída: {yb.shape}')
-        break
-    for xb, yb in val_loader:
-        print(f'[Validação] Batch entrada: {xb.shape} | Batch saída: {yb.shape}')
-        break
-    for xb, yb in test_loader:
-        print(f'[Inferência] Entrada: {xb} | shape saída: {yb.shape}')
+    for xb, yb, mb in train_loader:
+        print(f'[Treino] Batch entrada: {xb.shape} | Batch saída: {yb.shape} | Máscara: {mb.shape}')
         break
 
+    for xb, yb, mb in val_loader:
+        print(f'[Validação] Batch entrada: {xb.shape} | Batch saída: {yb.shape} | Máscara: {mb.shape}')
+        break
 
-# Teste rápido
-if __name__ == '__main__':
-    for xb, yb in train_loader:
-        print(f'Batch entrada: {xb.shape} | Batch saída: {yb.shape}')
+    for xb, yb, mb in test_loader:
+        print(f'[Inferência] Entrada: {xb.shape} | shape saída: {yb.shape} | Máscara: {mb.shape}')
         break

@@ -64,7 +64,7 @@ def fix_missing_cloud_points(case_dir):
         for y in expected_y:
             if (x, y) not in existing_points:
                 missing_points.append(
-                    [x, y, 0.0, 0.0, 0.0, 0.0, 0.0]
+                    [x, y, np.nan, np.nan, np.nan, np.nan, np.nan]
                 )  # Adicionar linha vazia
 
     if missing_points:

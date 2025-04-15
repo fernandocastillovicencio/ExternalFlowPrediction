@@ -1,93 +1,93 @@
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
-from model import ReFlowUNet
+import os
+from matplotlib import cm
+import matplotlib as mpl
 from flow_dataset import FlowDataset
+from model import ReFlowNet
+from loss_plot import plot_loss_curve
+from visualize_fields import plot_prediction_fields
+from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.optim as optim
 
-# Configurações
+# Configuração global para visualização
+mpl.rcParams['image.interpolation'] = 'none'
+mpl.rcParams['image.cmap'] = 'jet'
+
+# Ajuste de diretório raiz do projeto
+os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Parâmetros
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BATCH_SIZE = 2
 EPOCHS = 100
 LR = 1e-3
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+MODEL_PATH = "neural_network/best_model.pt"
 
-# Dados com divisão fixa (T/V/I)
+# Datasets e Loaders
 train_set = FlowDataset(subset='train')
-val_set   = FlowDataset(subset='val')
+val_set = FlowDataset(subset='val')
 
 train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
-val_loader   = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
+val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 
-# Modelo e otimizador
-model = ReFlowUNet().to(DEVICE)
+# Modelo
+model = ReFlowNet().to(DEVICE)
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+optimizer = optim.Adam(model.parameters(), lr=LR)
 
-# Loop de treino
-best_val_loss = float('inf')
+# Treinamento
+train_losses = []
+val_losses = []
+best_val_loss = float("inf")
+os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 
-for epoch in range(EPOCHS):
+for epoch in range(1, EPOCHS + 1):
     model.train()
     train_loss = 0.0
 
-    for xb, yb in train_loader:
-        xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+    for xb, yb, mb in train_loader:
+        xb, yb, mb = xb.to(DEVICE), yb.to(DEVICE), mb.to(DEVICE)
         optimizer.zero_grad()
         preds = model(xb)
-        loss = criterion(preds, yb)
+        if mb.sum() == 0:
+            continue
+        loss = criterion(preds[mb], yb[mb])
         loss.backward()
         optimizer.step()
-        train_loss += loss.item()
+        train_loss += loss.item() * xb.size(0)
 
-    train_loss /= len(train_loader)
+    train_loss /= len(train_loader.dataset)
 
-    # Validação
     model.eval()
     val_loss = 0.0
     with torch.no_grad():
-        for xb, yb in val_loader:
-            xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+        for xb, yb, mb in val_loader:
+            xb, yb, mb = xb.to(DEVICE), yb.to(DEVICE), mb.to(DEVICE)
             preds = model(xb)
-            loss = criterion(preds, yb)
-            val_loss += loss.item()
+            if mb.sum() == 0:
+                continue
+            loss = criterion(preds[mb], yb[mb])
+            val_loss += loss.item() * xb.size(0)
 
-    val_loss /= len(val_loader)
+    val_loss /= len(val_loader.dataset)
+    train_losses.append(train_loss)
+    val_losses.append(val_loss)
 
-    print(f"Época {epoch+1:03d} | Treino: {train_loss:.6f} | Validação: {val_loss:.6f}")
-
-    # Salvar melhor modelo
+    print(f"Epoch {epoch:03d} | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
     if val_loss < best_val_loss:
         best_val_loss = val_loss
-        torch.save(model.state_dict(), 'neural_network/best_model.pt')
-        print("📦 Modelo salvo!")
+        torch.save(model.state_dict(), MODEL_PATH)
+        print(f"✔️ Novo melhor modelo salvo: {MODEL_PATH}")
 
+print("\n🏁 Treinamento finalizado.")
 
-# Após o treino: visualização final da melhor predição na validação
-import matplotlib.pyplot as plt
-import os
+# Plota a curva de perda
+plot_loss_curve(train_losses, val_losses)
 
-# Garante que o melhor modelo está carregado
-model.load_state_dict(torch.load('neural_network/best_model.pt', map_location=DEVICE))
-model.eval()
-
-# Seleciona primeiro exemplo da validação
-sample_Re, sample_true = val_set[0]
-sample_Re = sample_Re.unsqueeze(0).to(DEVICE)
-sample_true = sample_true.numpy()
-
-with torch.no_grad():
-    sample_pred = model(sample_Re).squeeze(0).cpu().numpy()
-
-var_names = ['Ux', 'Uy', 'p']
-os.makedirs("validacao_final", exist_ok=True)
-
-for j in range(3):
-    fig, axs = plt.subplots(1, 2, figsize=(10, 4))
-    axs[0].imshow(sample_true[:, :, j], cmap='jet')
-    axs[0].set_title(f'{var_names[j]} real (validação)')
-    axs[1].imshow(sample_pred[:, :, j], cmap='jet')
-    axs[1].set_title(f'{var_names[j]} predito (validação)')
-    for ax in axs:
-        ax.axis('off')
-    plt.tight_layout()
-    plt.savefig(f'validacao_final/{var_names[j]}_final.png')
-    plt.close()
+# Visualização dos campos com a máscara original do domínio
+model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+domain_mask = val_set.get_domain_mask()
+plot_prediction_fields(model, val_loader, DEVICE, domain_mask)
