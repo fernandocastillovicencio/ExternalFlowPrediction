@@ -39,6 +39,7 @@ simulations/scripts/casos.txt
 **/*.png
 **/*.pt
 **/*.md
+**/*.tar.gz
 **/data
 
 
