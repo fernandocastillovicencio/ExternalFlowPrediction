@@ -11,6 +11,8 @@ usar_versao_log = True  # <<<<< Altere para False para usar versão normal
 
 
 def _plot_single_case(caso, data, output_dir, variaveis, plot_data_func, tipo_nome):
+    tipo_nome_sanitizado = tipo_nome.replace("normalized-log", "normalized")  # para gráficos
+
     unidades_por_tipo = {
         "raw":         {0: "m/s", 1: "m/s", 2: "Pa"},
         "dimensionless": {0: "-",    1: "-",    2: "-"},
@@ -18,44 +20,93 @@ def _plot_single_case(caso, data, output_dir, variaveis, plot_data_func, tipo_no
     }
 
     num_variaveis = len(variaveis)
-    fig = plt.figure(figsize=(5 * num_variaveis, 12))
+    fig = plt.figure(figsize=(5 * num_variaveis, 16))
     caso_atual = data[caso, :, :, :]
 
     for j in range(num_variaveis):
         data_to_plot = plot_data_func(caso_atual, j)
         nome_variavel_base = variaveis[j].split(" ")[0]  # "Ux", "Uy", "p"
-        unidade = unidades_por_tipo[tipo_nome][j]
+        unidade = unidades_por_tipo[tipo_nome_sanitizado][j]
+
         label_com_unidade = f"{nome_variavel_base} ({unidade})" if unidade else nome_variavel_base
 
         # --- Linha 1: Mapa de calor ---
-        plt.subplot(3, num_variaveis, j + 1)
+        plt.subplot(5, num_variaveis, j + 1)
         plt.imshow(data_to_plot.T, cmap="turbo", origin="lower")
         plt.title(f"{label_com_unidade} [{tipo_nome}]")
         plt.colorbar(label=unidade)
+        plt.grid()
 
 
         # --- Linha 2: Histograma ---
-        plt.subplot(3, num_variaveis, num_variaveis + j + 1)
+        plt.subplot(5, num_variaveis, num_variaveis + j + 1)
         sns.histplot(data_to_plot.flatten(), bins=50, kde=True, stat="density")
         plt.title(f"Histograma de {label_com_unidade} [{tipo_nome}]")
         plt.xlabel(f"{label_com_unidade}")
+        plt.grid()
 
         # --- Linha 3: Boxplot ---
-        plt.subplot(3, num_variaveis, 2 * num_variaveis + j + 1)
+        plt.subplot(5, num_variaveis, 2 * num_variaveis + j + 1)
         sns.boxplot(x=data_to_plot.flatten())
         plt.title(f"Boxplot de {label_com_unidade} [{tipo_nome}]")
         plt.xlabel(f"{label_com_unidade}")
+        plt.grid()
+
+                # --- Linha 4: Boxplot (normalização individual de 0 a 1 por caso) ---
+        plt.subplot(5, num_variaveis, 3 * num_variaveis + j + 1)
+
+        data_norm = data_to_plot.copy().astype(float)
+        data_norm = data_norm[~np.isnan(data_norm)]  # remove NaNs para min/max
+        if len(data_norm) > 0:
+            min_val = np.min(data_norm)
+            max_val = np.max(data_norm)
+            if max_val > min_val:
+                data_norm = (data_norm - min_val) / (max_val - min_val)
+            else:
+                data_norm = np.zeros_like(data_norm)  # todos iguais
+
+            sns.boxplot(x=data_norm)
+            plt.title(f"Boxplot de {nome_variavel_base} [normalizado 0-1]")
+            plt.xlabel(f"{nome_variavel_base} (normalizado)")
+        else:
+            plt.text(0.5, 0.5, 'Sem dados', ha='center', va='center')
+        plt.grid()
+
+                # --- Linha 5: Boxplot com Z-score por caso ---
+        plt.subplot(5, num_variaveis, 4 * num_variaveis + j + 1)
+
+        z_data = data_to_plot.copy().astype(float)
+        z_data = z_data[~np.isnan(z_data)]  # remove NaNs
+
+        if len(z_data) > 1:
+            mean_val = np.mean(z_data)
+            std_val = np.std(z_data)
+            if std_val > 0:
+                z_data = (z_data - mean_val) / std_val
+            else:
+                z_data = np.zeros_like(z_data)  # todos iguais
+
+            sns.boxplot(x=z_data)
+            plt.title(f"Boxplot de {nome_variavel_base} [Z-score]")
+            plt.xlabel(f"{nome_variavel_base} (padronizado)")
+        else:
+            plt.text(0.5, 0.5, 'Sem dados', ha='center', va='center')
+        plt.grid()
+
+
 
     # 🔹 Título geral da figura (topo da imagem)
     nome_var_principal = variaveis[0].split(" ")[0]  # ex: Ux
-    fig.suptitle(f"[{tipo_nome}] field and distribution", fontsize=16)
+    fig.suptitle(f"[{tipo_nome_sanitizado}] field and distribution", fontsize=16)
 
     # 🔹 Ajustar layout reservando espaço para o título
     plt.tight_layout(rect=[0, 0, 1, 0.96])  # deixa espaço no topo (4% da altura)
 
     # 🔹 Salvar imagem com o título visível
     case_prefix = f"case{str(caso + 1).zfill(2)}"
+    tipo_nome_sanitizado = tipo_nome.replace("normalized-log", "normalized")  # nome visual no gráfico
     plt.savefig(os.path.join(output_dir, f"{tipo_nome}_{case_prefix}.png"), bbox_inches="tight")
+
     plt.close()
 
 
@@ -67,12 +118,17 @@ def plot_parallel(base_dir, variaveis, plot_data_func, num_processes=None):
     output_dir = "simulations/data_analysis"
     os.makedirs(output_dir, exist_ok=True)
 
-    # Arquivos a processar
     datasets = {
         "raw": np.load(f"{base_dir}/dataY-raw.npy"),
         "dimensionless": np.load(f"{base_dir}/dataY-dimensionless.npy"),
-        "normalized": np.load(f"{base_dir}/dataY-normalized.npy")
     }
+
+    # 🔀 Carrega a versão correta de 'normalized'
+    if usar_versao_log:
+        datasets["normalized-log"] = np.load(f"{base_dir}/dataY-normalized-log.npy")
+    else:
+        datasets["normalized"] = np.load(f"{base_dir}/dataY-normalized.npy")
+
 
     num_casos = datasets["raw"].shape[0]
     assert all(ds.shape[0] == num_casos for ds in datasets.values()), "⚠️ Número de casos inconsistente entre os arquivos."
