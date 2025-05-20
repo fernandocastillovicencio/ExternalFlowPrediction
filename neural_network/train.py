@@ -19,18 +19,19 @@ LAMBDA_NS = 0.5  # Peso da penalização física
 MODEL_PATH = "neural_network/best_model.pt"
 
 # Dados
-train_set = FlowDataset(subset='train')
-val_set = FlowDataset(subset='val')
+train_set = FlowDataset(subset="train")
+val_set = FlowDataset(subset="val")
 train_loader = DataLoader(train_set, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_set, batch_size=BATCH_SIZE, shuffle=False)
 
-model = ReFlowNet(in_channels=5).to(DEVICE)
-criterion = nn.MSELoss()
+model = ReFlowNet(in_channels=2).to(DEVICE)
+
 optimizer = optim.Adam(model.parameters(), lr=LR)
 
 train_losses, val_losses = [], []
 best_val_loss = float("inf")
 os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+
 
 def compute_NS_loss(preds, coords, Re):
     """
@@ -42,11 +43,12 @@ def compute_NS_loss(preds, coords, Re):
     v = preds[:, 1:2, :, :]
     p = preds[:, 2:3, :, :]
 
-    x = coords[:, 0:1, :, :].detach()
-    y = coords[:, 1:2, :, :].detach()
+    x = coords[:, 0:1, :, :].requires_grad_(True)
+    y = coords[:, 1:2, :, :].requires_grad_(True)
 
-    grads = lambda f, wrt: torch.autograd.grad(f, wrt, grad_outputs=torch.ones_like(f),
-                                               create_graph=True, retain_graph=True)[0]
+    grads = lambda f, wrt: torch.autograd.grad(
+        f, wrt, grad_outputs=torch.ones_like(f), create_graph=True, retain_graph=True
+    )[0]
 
     # Primeiras derivadas
     du_dx = grads(u, x)
@@ -64,61 +66,97 @@ def compute_NS_loss(preds, coords, Re):
 
     # Resíduos
     continuity = du_dx + dv_dy
-    momentum_x = u * du_dx + v * du_dy + dp_dx - (1/Re) * (d2u_dx2 + d2u_dy2)
-    momentum_y = u * dv_dx + v * dv_dy + dp_dy - (1/Re) * (d2v_dx2 + d2v_dy2)
+    momentum_x = u * du_dx + v * du_dy + dp_dx - (1 / Re) * (d2u_dx2 + d2u_dy2)
+    momentum_y = u * dv_dx + v * dv_dy + dp_dy - (1 / Re) * (d2v_dx2 + d2v_dy2)
 
-    loss_c = torch.mean(continuity ** 2)
-    loss_x = torch.mean(momentum_x ** 2)
-    loss_y = torch.mean(momentum_y ** 2)
+    loss_c = torch.mean(continuity**2)
+    loss_x = torch.mean(momentum_x**2)
+    loss_y = torch.mean(momentum_y**2)
 
     return loss_c + loss_x + loss_y
+
 
 for epoch in range(1, EPOCHS + 1):
     model.train()
     train_loss = 0.0
 
-    for xb, yb, mb, coords in train_loader:
-        xb, yb, mb, coords = xb.to(DEVICE), yb.to(DEVICE), mb.to(DEVICE), coords.to(DEVICE)
+    for xb, yb, mb, coords, region in train_loader:
+        xb, yb, mb, coords, region = (
+            xb.to(DEVICE),
+            yb.to(DEVICE),
+            mb.to(DEVICE),
+            coords.to(DEVICE),
+            region.to(DEVICE),
+        )
+
         optimizer.zero_grad()
         preds = model(xb)
 
         # Loss de dados
-        loss_data = (
-            criterion(preds[..., 0][mb[..., 0]], yb[..., 0][mb[..., 0]]) +
-            criterion(preds[..., 1][mb[..., 1]], yb[..., 1][mb[..., 1]]) +
-            criterion(preds[..., 2][mb[..., 2]], yb[..., 2][mb[..., 2]])
-        )
+        # Erro quadrático ponto a ponto
+        erro2 = (preds - yb) ** 2  # shape: [B, H, W, 3]
+
+        # Cria pesos por região (1: livre, 2: frontal, 3: esteira)
+        pesos = torch.where(
+            region == 1,
+            1.0,
+            torch.where(region == 2, 3.0, torch.where(region == 3, 5.0, 0.0)),
+        )  # shape: [B, H, W]
+        pesos = pesos.unsqueeze(-1).expand_as(erro2)  # shape: [B, H, W, 3]
+
+        # Aplica máscara e pesos
+        mask_float = mb.float()
+        erro2 = erro2 * pesos * mask_float
+
+        # Calcula loss ponderada
+        loss_data = torch.sum(erro2) / torch.sum(mask_float)
 
         # Re recuperado da entrada (canal 0)
         Re_val = xb[:, 0, 0, 0].mean()
-        loss_phys = compute_NS_loss(preds, coords, Re_val)
+        # loss_phys = compute_NS_loss(preds, coords, Re_val)
 
         # Loss total
-        loss = loss_data + LAMBDA_NS * loss_phys
+        loss = loss_data
+        # loss = loss_data + LAMBDA_NS * loss_phys
         loss.backward()
         optimizer.step()
         train_loss += loss.item() * xb.size(0)
 
     train_loss /= len(train_loader.dataset)
+    print(f"Epoch {epoch:03d} | Train Loss: {loss_data.item():.6f}")
 
     # Validação padrão
     model.eval()
     val_loss = 0.0
     with torch.no_grad():
-        for xb, yb, mb, _ in val_loader:
-            xb, yb, mb = xb.to(DEVICE), yb.to(DEVICE), mb.to(DEVICE)
+        for xb, yb, mb, _, region in val_loader:
+            xb, yb, mb, region = (
+                xb.to(DEVICE),
+                yb.to(DEVICE),
+                mb.to(DEVICE),
+                region.to(DEVICE),
+            )
+
             preds = model(xb)
-            val_loss += (
-                criterion(preds[..., 0][mb[..., 0]], yb[..., 0][mb[..., 0]]) +
-                criterion(preds[..., 1][mb[..., 1]], yb[..., 1][mb[..., 1]]) +
-                criterion(preds[..., 2][mb[..., 2]], yb[..., 2][mb[..., 2]])
-            ).item() * xb.size(0)
+            erro2 = (preds - yb) ** 2
+            pesos = torch.where(
+                region == 1,
+                1.0,
+                torch.where(region == 2, 3.0, torch.where(region == 3, 5.0, 0.0)),
+            )
+            pesos = pesos.unsqueeze(-1).expand_as(erro2)
+            mask_float = mb.float()
+            erro2 = erro2 * pesos * mask_float
+            loss_val_batch = torch.sum(erro2) / torch.sum(mask_float)
+            val_loss += loss_val_batch.item() * xb.size(0)
 
     val_loss /= len(val_loader.dataset)
     train_losses.append(train_loss)
     val_losses.append(val_loss)
 
-    print(f"Epoch {epoch:03d} | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}")
+    print(
+        f"Epoch {epoch:03d} | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f}"
+    )
     if val_loss < best_val_loss:
         best_val_loss = val_loss
         torch.save(model.state_dict(), MODEL_PATH)

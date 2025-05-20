@@ -2,8 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class ReFlowNet(nn.Module):
-    def __init__(self, in_channels=5):
+    def __init__(self, in_channels=2):
+
         super(ReFlowNet, self).__init__()
 
         # Encoder compartilhado
@@ -51,10 +53,13 @@ class ReFlowNet(nn.Module):
         """Garante que as dimensões espaciais coincidam antes de concatenar."""
         _, _, h, w = upsampled.shape
         if skip.shape[2:] != (h, w):
-            skip = F.interpolate(skip, size=(h, w), mode='nearest')
+            skip = F.interpolate(skip, size=(h, w), mode="nearest")
         return torch.cat([upsampled, skip], dim=1)
 
     def forward(self, x):
+        # Define dinamicamente altura e largura do input
+        height, width = x.shape[2:]
+
         # Encoder
         e1 = self.enc1(x)
         e2 = self.enc2(self.pool(e1))
@@ -87,7 +92,9 @@ class ReFlowNet(nn.Module):
 
         # Concatena as saídas e reorganiza para [B, H, W, 3]
         out = torch.cat([out_vel, out_p], dim=1)
-        # Ajusta saída final para o shape original (100x100)
-        out = F.interpolate(out, size=(100, 100), mode='bilinear', align_corners=False)
-        return out.permute(0, 2, 3, 1)
 
+        # Redimensiona dinamicamente para o shape original do input
+        out = F.interpolate(
+            out, size=(height, width), mode="bilinear", align_corners=False
+        )
+        return out.permute(0, 2, 3, 1)

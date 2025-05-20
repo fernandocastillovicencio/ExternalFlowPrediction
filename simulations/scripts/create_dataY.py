@@ -56,12 +56,12 @@ for path in xy_paths:
 
         # Máscara do obstáculo (p = Ux = Uy = 0)
         mask_obstacle = (p == 0.0) & (Ux == 0.0) & (Uy == 0.0)
-        p[mask_obstacle]  = np.nan
+        p[mask_obstacle] = np.nan
         Ux[mask_obstacle] = np.nan
         Uy[mask_obstacle] = np.nan
 
         # Reshape para [NY, NX]
-        p  = p.reshape((NY, NX))
+        p = p.reshape((NY, NX))
         Ux = Ux.reshape((NY, NX))
         Uy = Uy.reshape((NY, NX))
 
@@ -97,7 +97,7 @@ for i, Re in enumerate(sorted_reynolds):
 
     Ux = tensor[:, :, 0] / Uref
     Uy = tensor[:, :, 1] / Uref
-    p  = tensor[:, :, 2] / (0.5 * rho * Uref**2)
+    p = tensor[:, :, 2] / (0.5 * rho * Uref**2)
 
     dimless_tensor = np.stack([Ux, Uy, p], axis=-1)
     dimless_data.append(dimless_tensor)
@@ -121,16 +121,16 @@ print("\n🔵 ETAPA 4 — Normalizando os campos com Z-score (por canal)...\n")
 # Separar os canais do tensor adimensionalizado
 Ux_all = dimless_dataset[:, :, :, 0]
 Uy_all = dimless_dataset[:, :, :, 1]
-p_all  = dimless_dataset[:, :, :, 2]
+p_all = dimless_dataset[:, :, :, 2]
 
 # Calcular médias e desvios (ignorando NaNs)
 mu_Ux = np.nanmean(Ux_all)
 mu_Uy = np.nanmean(Uy_all)
-mu_p  = np.nanmean(p_all)
+mu_p = np.nanmean(p_all)
 
 std_Ux = np.nanstd(Ux_all)
 std_Uy = np.nanstd(Uy_all)
-std_p  = np.nanstd(p_all)
+std_p = np.nanstd(p_all)
 
 print(f"  • Ux: μ = {mu_Ux:.4f}, σ = {std_Ux:.4f}")
 print(f"  • Uy: μ = {mu_Uy:.4f}, σ = {std_Uy:.4f}")
@@ -139,7 +139,7 @@ print(f"  •  p: μ = {mu_p:.4f}, σ = {std_p:.4f}")
 # Normalizar canal por canal (preservando NaNs)
 Ux_norm = (Ux_all - mu_Ux) / std_Ux
 Uy_norm = (Uy_all - mu_Uy) / std_Uy
-p_norm  = (p_all  - mu_p)  / std_p
+p_norm = (p_all - mu_p) / std_p
 
 # Reempilhar
 normalized_dataset = np.stack([Ux_norm, Uy_norm, p_norm], axis=-1)
@@ -159,15 +159,28 @@ print("\n🔵 ETAPA 5 — Salvando parâmetros de normalização e dimensionaliz
 # Construir dicionário único
 stats_all = {
     "rho": 1.225,
-    "Ux": { "mean": float(mu_Ux), "std": float(std_Ux) },
-    "Uy": { "mean": float(mu_Uy), "std": float(std_Uy) },
-    "p":  { "mean": float(mu_p),  "std": float(std_p) },
-    "Uref": { f"{Re:.2f}": float(velocities[Re]) for Re in sorted_reynolds }
+    "Ux": {"mean": float(mu_Ux), "std": float(std_Ux)},
+    "Uy": {"mean": float(mu_Uy), "std": float(std_Uy)},
+    "p": {"mean": float(mu_p), "std": float(std_p)},
+    "Uref": {f"{Re:.2f}": float(velocities[Re]) for Re in sorted_reynolds},
 }
 
-# Salvar em simulations/data/dataY_stats.json
-stats_path = pathlib.Path("simulations/data/dataY_stats.json")
+# Salvar em simulations/data/dataY-norm-params.json
+stats_path = pathlib.Path("simulations/data/dataY-norm-params.json")
 with stats_path.open("w") as f:
     json.dump(stats_all, f, indent=4)
 
 print(f"✅ Arquivo salvo: {stats_path}")
+
+
+# -------------------------------------------------------- #
+#           ETAPA 6 — GERAÇÃO DE FLOW_MASK (opcional)     #
+# -------------------------------------------------------- #
+
+print("\n🔵 ETAPA 6 — Gerando flow_mask.npy com base em p...\n")
+
+# A máscara é baseada na presença de NaN no campo de pressão adimensionalizado
+flow_mask = ~np.isnan(dimless_dataset[:, :, :, 2])
+np.save("simulations/data/flow_mask.npy", flow_mask.astype(np.uint8))
+
+print(f"✅ flow_mask.npy gerado com shape: {flow_mask.shape}")
